@@ -8,11 +8,11 @@
 //
 // Configurar en Vercel:  Settings → Environment Variables → GROQ_API_KEY
 // Modelo gratuito recomendado: llama-3.3-70b-versatile (o llama-3.1-8b-instant
-// si querés menor latencia).
+// si quieres menor latencia).
 // -----------------------------------------------------------------------------
 
-const SYSTEM = `Sos el intérprete de un editor de imágenes basado en álgebra lineal.
-Devolvés EXCLUSIVAMENTE un objeto JSON con la forma { "space", "type", "params" }.
+const SYSTEM = `Eres el intérprete de un editor de imágenes basado en álgebra lineal.
+Devuelves EXCLUSIVAMENTE un objeto JSON con la forma { "space", "type", "params" }.
 No agregues texto, explicaciones ni markdown.
 
 Espacios y tipos válidos:
@@ -34,15 +34,15 @@ Espacios y tipos válidos:
   - "undo" {}    // deshacer la última
 
 Reglas:
-- Elegí el ÚNICO tipo que mejor corresponde al pedido.
-- Si el pedido combina varias cosas, devolvé la primera operación; el usuario puede pedir el resto después.
+- Elige el ÚNICO tipo que mejor corresponde al pedido.
+- Si el pedido combina varias cosas, devuelve la primera operación; el usuario puede pedir el resto después.
 - Si no corresponde a nada de lo anterior, devolvé {"space":"none"}.
 Ejemplos:
 "gírala un poco a la izquierda" -> {"space":"geo","type":"rotate","params":{"deg":20}}
-"hacela el doble de grande" -> {"space":"geo","type":"scale","params":{"sx":2,"sy":2}}
-"pasala a blanco y negro" -> {"space":"color","type":"gray","params":{}}
-"resaltá la esquina de abajo a la derecha" -> {"space":"mask","type":"highlight","params":{"region":"abajo-derecha"}}
-"volvé al original" -> {"space":"control","type":"reset","params":{}}`;
+"hazla el doble de grande" -> {"space":"geo","type":"scale","params":{"sx":2,"sy":2}}
+"pásala a blanco y negro" -> {"space":"color","type":"gray","params":{}}
+"resalta la esquina de abajo a la derecha" -> {"space":"mask","type":"highlight","params":{"region":"abajo-derecha"}}
+"vuelve al original" -> {"space":"control","type":"reset","params":{}}`;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ space: "none" });

@@ -171,6 +171,80 @@ function parsePoints(str) {
   return pts.length >= 2 ? pts : null;
 }
 
+// ---------------- RECORTE EN FORMAS ----------------
+// Dibuja la silueta en el contexto (centrado en el origen). w,h = tamaño de la imagen.
+const SHAPES = ["cuadrado", "rectangulo", "triangulo", "rombo", "pentagono", "hexagono", "estrella", "circulo", "corazon"];
+const SHAPE_LABEL = { cuadrado: "Cuadrado", rectangulo: "Rectángulo", triangulo: "Triángulo", rombo: "Rombo", pentagono: "Pentágono", hexagono: "Hexágono", estrella: "Estrella", circulo: "Círculo", corazon: "Corazón" };
+function buildShapePath(ctx, w, h, shape) {
+  const S = (Math.min(w, h) / 2) * 0.98;
+  const poly = (pts) => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); };
+  const regular = (n, rot = -Math.PI / 2) => Array.from({ length: n }, (_, k) => { const a = rot + (k * 2 * Math.PI) / n; return [S * Math.cos(a), S * Math.sin(a)]; });
+  if (shape === "cuadrado") return poly([[-S, -S], [S, -S], [S, S], [-S, S]]);
+  if (shape === "rectangulo") { const rx = (w / 2) * 0.96, ry = (h / 2) * 0.96; return poly([[-rx, -ry], [rx, -ry], [rx, ry], [-rx, ry]]); }
+  if (shape === "triangulo") return poly([[0, -S], [S * 0.87, S * 0.5], [-S * 0.87, S * 0.5]]);
+  if (shape === "rombo") return poly([[0, -S], [S, 0], [0, S], [-S, 0]]);
+  if (shape === "pentagono") return poly(regular(5));
+  if (shape === "hexagono") return poly(regular(6));
+  if (shape === "estrella") {
+    const pts = []; for (let k = 0; k < 10; k++) { const r = k % 2 ? S * 0.42 : S; const a = -Math.PI / 2 + (k * Math.PI) / 5; pts.push([r * Math.cos(a), r * Math.sin(a)]); }
+    return poly(pts);
+  }
+  if (shape === "circulo") { ctx.beginPath(); ctx.arc(0, 0, S, 0, Math.PI * 2); return; }
+  if (shape === "corazon") {
+    ctx.beginPath();
+    for (let i = 0; i <= 60; i++) {
+      const t = (i / 60) * Math.PI * 2;
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      const px = (x / 17) * S, py = -(y / 17) * S; // y hacia abajo en canvas
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+  }
+}
+function localShape(s) {
+  if (/(sin recorte|sin forma|quita.*(forma|recorte)|forma original)/.test(s)) return { type: "clear", params: {} };
+  if (/recort|forma de|en forma|dale forma|figura|silueta/.test(s)) {
+    let shape = null;
+    if (/corazon/.test(s)) shape = "corazon";
+    else if (/triangul/.test(s)) shape = "triangulo";
+    else if (/rectangul/.test(s)) shape = "rectangulo";
+    else if (/cuadrad/.test(s)) shape = "cuadrado";
+    else if (/rombo|diamante/.test(s)) shape = "rombo";
+    else if (/pentagon/.test(s)) shape = "pentagono";
+    else if (/hexagon/.test(s)) shape = "hexagono";
+    else if (/estrella|star/.test(s)) shape = "estrella";
+    else if (/circul|redond|ovalo|elipse/.test(s)) shape = "circulo";
+    if (shape) return { type: "clip", params: { shape } };
+  }
+  return null;
+}
+function explainShape(shape) {
+  const convex = ["cuadrado", "rectangulo", "triangulo", "rombo", "pentagono", "hexagono"];
+  if (shape === "circulo") {
+    return { space: "shape", shape, title: "Recorte: círculo", steps: [
+      `El círculo se define con una forma cuadrática: xᵀ Q x ≤ 1, con Q simétrica definida positiva.`,
+      `Se conserva el píxel cuyo vector de posición cumple esa desigualdad.`,
+      `Es el paso siguiente a las transformaciones lineales: una forma bilineal.`] };
+  }
+  if (shape === "corazon") {
+    return { space: "shape", shape, title: "Recorte: corazón", steps: [
+      `El corazón usa una curva implícita NO lineal; su borde no se describe con desigualdades lineales.`,
+      `Lo incluyo como contraste: no toda forma es álgebra lineal.`,
+      `Aun así, el recorte se transforma junto con la imagen (rota y escala con la matriz).`] };
+  }
+  if (shape === "estrella") {
+    return { space: "shape", shape, title: "Recorte: estrella", steps: [
+      `Una estrella es una región no convexa: unión e intersección de varios semiplanos.`,
+      `Cada lado sigue siendo una desigualdad lineal aᵀx ≤ b (producto punto con su normal).`,
+      `Se conserva el píxel según ese conjunto de condiciones lineales.`] };
+  }
+  return { space: "shape", shape, title: `Recorte: ${SHAPE_LABEL[shape].toLowerCase()}`, steps: [
+    `Un polígono convexo es la intersección de semiplanos.`,
+    `Cada lado es una desigualdad lineal aᵀx ≤ b: un producto punto con la normal del lado.`,
+    `El píxel se conserva si cumple todas a la vez. Es álgebra lineal pura (funcionales lineales).`] };
+}
+
 // ---------------- RESALTAR ZONAS (máscara espacial, no es matriz) ----------------
 const REGIONS = {
   centro: { x: .30, y: .30, w: .40, h: .40 },
@@ -208,6 +282,7 @@ function localIntent(s) {
   if (/limpia|borra todo|reinici|empezar de nuevo|reset/.test(s)) return { space: "control", type: "reset", params: {} };
   if (/deshace|undo|deshacer|atrás|atras|quita.*últim|quita.*ultim/.test(s)) return { space: "control", type: "undo", params: {} };
   const mk = localMask(s); if (mk) return { space: "mask", ...mk };
+  const sh = localShape(s); if (sh) return { space: "shape", ...sh };
   if (/gris|blanco|negativo|invert|sepia|satur|canal|rojiz|rojo|verd|azul/.test(s)) { const c = localColor(s); if (c) return { space: "color", ...c }; }
   const g = localGeo(s); if (g) return { space: "geo", ...g };
   return null;
@@ -227,6 +302,7 @@ export default function App() {
   const [mode, setMode] = useState("imagen"); // imagen | coords
   const [steps, setSteps] = useState([]);      // pipeline ordenado
   const [highlight, setHighlight] = useState(null); // zona resaltada {x,y,w,h} en 0..1
+  const [shape, setShape] = useState(null);         // recorte en forma (clip)
   const [intensity, setIntensity] = useState(1);    // intensidad del color 0..1
   const [pixels, setPixels] = useState(null);       // grilla de píxeles para el visor
   const [hoverPx, setHoverPx] = useState(null);     // píxel sobre el que está el mouse
@@ -295,6 +371,7 @@ export default function App() {
     a.save(); a.globalAlpha = 0.12; a.drawImage(img, cx - w / 2, cy - h / 2, w, h); a.restore();
     const tint = tintedImage() || img;
     a.save(); a.translate(cx, cy); a.transform(geoTotal.a, -geoTotal.b, -geoTotal.c, geoTotal.d, geoTotal.e * UNIT, -geoTotal.f * UNIT);
+    if (shape) { buildShapePath(a, w, h, shape); a.clip(); }
     a.drawImage(tint, -w / 2, -h / 2, w, h); a.restore();
 
     if (highlight) {
@@ -305,7 +382,7 @@ export default function App() {
       a.strokeStyle = J; a.lineWidth = 2; a.strokeRect(r.x * W, r.y * H, r.w * W, r.h * H);
       a.restore();
     }
-  }, [mode, geoTotal, tintedImage, points, highlight]);
+  }, [mode, geoTotal, tintedImage, points, highlight, shape]);
 
   useEffect(() => { drawAll(); }, [drawAll]);
 
@@ -324,6 +401,12 @@ export default function App() {
       const region = it.params?.region || "centro";
       setHighlight(REGIONS[region] || REGIONS.centro); setInfo(explainMask(region));
       return botSay(`Resalté la zona: ${region.replace("-", " ")}.`);
+    }
+    if (it.space === "shape") {
+      if (mode !== "imagen") return botSay("El recorte en forma funciona en modo imagen.");
+      if (it.type === "clear") { setShape(null); return botSay("Quité el recorte; vuelve la imagen completa."); }
+      const sh = it.params?.shape; setShape(sh); setInfo(explainShape(sh));
+      return botSay(`Recorté la imagen en forma de ${SHAPE_LABEL[sh].toLowerCase()}. El recorte se transforma junto con la imagen.`);
     }
     if (it.space === "color") {
       if (mode === "coords") return botSay("El color aplica solo en modo imagen.");
@@ -354,10 +437,10 @@ export default function App() {
         const k = MAX / Math.max(img.width, img.height);
         const oc = document.createElement("canvas"); oc.width = Math.round(img.width * k); oc.height = Math.round(img.height * k);
         oc.getContext("2d").drawImage(img, 0, 0, oc.width, oc.height);
-        final = new Image(); final.onload = () => { imgRef.current = final; setSteps([]); setInfo(null); setHighlight(null); setMode("imagen"); drawAll(); }; final.src = oc.toDataURL();
+        final = new Image(); final.onload = () => { imgRef.current = final; setSteps([]); setInfo(null); setHighlight(null); setShape(null); setMode("imagen"); drawAll(); }; final.src = oc.toDataURL();
         return;
       }
-      imgRef.current = final; setSteps([]); setInfo(null); setHighlight(null); setMode("imagen"); drawAll();
+      imgRef.current = final; setSteps([]); setInfo(null); setHighlight(null); setShape(null); setMode("imagen"); drawAll();
     };
     img.src = src;
   }
@@ -441,6 +524,11 @@ export default function App() {
         .composer input:focus { border-color:#2c456f; }
         .send { background:${I}; color:#1a1102; border:none; border-radius:11px; padding:0 14px; cursor:pointer; display:flex; align-items:center; }
         .slider-row { display:flex; align-items:center; gap:12px; margin-top:14px; font-size:12.5px; color:var(--muted); }
+        .shape-row { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-top:14px; }
+        .shape-lbl { font-size:12px; color:var(--muted); margin-right:2px; }
+        .shape-chip { font-size:12px; color:var(--muted); background:transparent; border:1px solid var(--border); padding:5px 10px; border-radius:999px; cursor:pointer; transition:.15s; }
+        .shape-chip:hover { color:var(--text); border-color:${I}; background:#1d2638; }
+        .shape-chip.on { color:#1a1102; background:${I}; border-color:${I}; }
         .slider-row b { color:var(--text); font-family:'JetBrains Mono'; min-width:42px; text-align:right; }
         .slider-row input[type=range] { flex:1; accent-color:${I}; }
         .pixels { margin-top:16px; }
@@ -502,6 +590,16 @@ export default function App() {
               </>
             )}
 
+            {mode === "imagen" && (
+              <div className="shape-row">
+                <span className="shape-lbl">Recortar en forma:</span>
+                {SHAPES.map((sh) => (
+                  <button key={sh} className={`shape-chip ${shape === sh ? "on" : ""}`} onClick={() => applyText(`recorta en forma de ${sh}`)}>{SHAPE_LABEL[sh]}</button>
+                ))}
+                {shape && <button className="shape-chip" onClick={() => applyText("sin recorte")}>Sin recorte</button>}
+              </div>
+            )}
+
             {mode === "imagen" && colorChain.length > 0 && (
               <div className="slider-row">
                 <span>Intensidad del color</span>
@@ -526,9 +624,9 @@ export default function App() {
 
           <div className="right">
             <div className="card pad">
-              <p className="panel-h">{info ? (info.space === "color" ? "Última: color" : info.space === "mask" ? "Última: resaltado" : "Última: geometría") : "Transformación"}</p>
+              <p className="panel-h">{info ? (info.space === "color" ? "Última: color" : info.space === "mask" ? "Última: resaltado" : info.space === "shape" ? "Última: recorte" : "Última: geometría") : "Transformación"}</p>
               {info ? <div className="title">{info.title}</div> : <div className="empty">Pide una transformación para ver su matriz.</div>}
-              {info && (info.space === "color" ? <ColorPanel info={info} /> : info.space === "mask" ? <MaskPanel info={info} /> : <GeoPanel info={info} />)}
+              {info && (info.space === "color" ? <ColorPanel info={info} /> : info.space === "mask" ? <MaskPanel info={info} /> : info.space === "shape" ? <ShapePanel info={info} /> : <GeoPanel info={info} />)}
               {info && <ol className="steps">{info.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>}
 
               {geoCount >= 2 && (
@@ -591,6 +689,26 @@ function GeoPanel({ info }) {
           <div>ĵ → (<span className="col-j">{info.jLands[0]}, {info.jLands[1]}</span>)</div>
           {info.homog && <div>origen → (<span className="col-k">{round(m.e)}, {round(m.f)}</span>)</div>}
         </div>
+      </div>
+    </div>
+  );
+}
+function ShapePanel({ info }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current; if (!cv) return; const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.save(); ctx.translate(cv.width / 2, cv.height / 2);
+    buildShapePath(ctx, cv.width * 0.8, cv.height * 0.8, info.shape);
+    ctx.fillStyle = "rgba(245,166,36,.18)"; ctx.fill();
+    ctx.strokeStyle = I; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+  }, [info.shape]);
+  return (
+    <div className="mtx-row">
+      <canvas ref={ref} width={150} height={120} style={{ background: "#0a111e", borderRadius: 12, flexShrink: 0 }} />
+      <div className="meta">
+        <div>forma: <b>{SHAPE_LABEL[info.shape]}</b></div>
+        <div style={{ color: info.shape === "corazon" ? "var(--muted)" : "var(--ok)" }}>{info.shape === "corazon" ? "borde no lineal" : info.shape === "circulo" ? "forma cuadrática" : "intersección de semiplanos"}</div>
       </div>
     </div>
   );

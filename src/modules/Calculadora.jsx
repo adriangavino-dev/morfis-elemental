@@ -137,7 +137,7 @@ export default function App() {
 
   function resize(which, dr, dc) {
     const M = which === "A" ? A : B, set = which === "A" ? setA : setB;
-    const r = Math.max(1, Math.min(10, M.length + dr)), c = Math.max(1, Math.min(10, M[0].length + dc));
+    const r = Math.max(1, M.length + dr), c = Math.max(1, M[0].length + dc);
     const next = newMatrix(r, c);
     for (let i = 0; i < r; i++) for (let j = 0; j < c; j++) next[i][j] = M[i]?.[j] ?? 0;
     set(next);

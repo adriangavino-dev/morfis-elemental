@@ -29,6 +29,9 @@ Espacios y tipos válidos:
 - space "mask":
   - "highlight" params {"region": "centro"|"arriba"|"abajo"|"izquierda"|"derecha"|"arriba-izquierda"|"arriba-derecha"|"abajo-izquierda"|"abajo-derecha"}
   - "clear" {}
+- space "shape":
+  - "clip" params {"shape": "cuadrado"|"rectangulo"|"triangulo"|"rombo"|"pentagono"|"hexagono"|"estrella"|"circulo"|"corazon"}
+  - "clear" {}
 - space "control":
   - "reset" {}   // empezar de nuevo / limpiar todo
   - "undo" {}    // deshacer la última
@@ -42,6 +45,7 @@ Ejemplos:
 "hazla el doble de grande" -> {"space":"geo","type":"scale","params":{"sx":2,"sy":2}}
 "pásala a blanco y negro" -> {"space":"color","type":"gray","params":{}}
 "resalta la esquina de abajo a la derecha" -> {"space":"mask","type":"highlight","params":{"region":"abajo-derecha"}}
+"recórtala en forma de corazón" -> {"space":"shape","type":"clip","params":{"shape":"corazon"}}
 "vuelve al original" -> {"space":"control","type":"reset","params":{}}`;
 
 export default async function handler(req, res) {
